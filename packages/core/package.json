@@ -1,0 +1,10 @@
+{
+  "name": "pro-engine",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "cargo build --workspace",
+    "test": "cargo test --workspace",
+    "lint": "cargo clippy --workspace --all-targets -- -D warnings"
+  }
+}

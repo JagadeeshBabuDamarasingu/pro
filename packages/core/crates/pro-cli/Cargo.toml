@@ -1,0 +1,23 @@
+[package]
+name = "pro-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "pro"
+path = "src/main.rs"
+
+[dependencies]
+pro-config.workspace = true
+pro-capability.workspace = true
+pro-sandbox.workspace = true
+pro-audit.workspace = true
+pro-provider.workspace = true
+pro-core.workspace = true
+pro-supply-chain.workspace = true
+pro-slop.workspace = true
+clap.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+time.workspace = true

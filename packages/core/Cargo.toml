@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/pro-config",
+    "crates/pro-capability",
+    "crates/pro-sandbox",
+    "crates/pro-audit",
+    "crates/pro-provider",
+    "crates/pro-provenance",
+    "crates/pro-supply-chain",
+    "crates/pro-confidence",
+    "crates/pro-slop",
+    "crates/pro-core",
+    "crates/pro-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+clap = { version = "4", features = ["derive", "env"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+sha2 = "0.10"
+time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
+thiserror = "1"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+async-trait = "0.1"
+
+pro-config = { path = "crates/pro-config" }
+pro-capability = { path = "crates/pro-capability" }
+pro-sandbox = { path = "crates/pro-sandbox" }
+pro-audit = { path = "crates/pro-audit" }
+pro-provider = { path = "crates/pro-provider" }
+pro-provenance = { path = "crates/pro-provenance" }
+pro-supply-chain = { path = "crates/pro-supply-chain" }
+pro-confidence = { path = "crates/pro-confidence" }
+pro-slop = { path = "crates/pro-slop" }
+pro-core = { path = "crates/pro-core" }

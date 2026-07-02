@@ -7,10 +7,12 @@ settings:
 importers:
 
   .:
-    dependencies:
+    devDependencies:
       turbo:
         specifier: ^2.10.1
         version: 2.10.1
+
+  packages/core: {}
 
 packages:
 

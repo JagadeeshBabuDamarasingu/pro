@@ -1,0 +1,22 @@
+[package]
+name = "pro-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pro-config.workspace = true
+pro-capability.workspace = true
+pro-sandbox.workspace = true
+pro-audit.workspace = true
+pro-provider.workspace = true
+pro-provenance.workspace = true
+pro-supply-chain.workspace = true
+pro-confidence.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+tokio.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true

@@ -1,6 +1,13 @@
 {
+  "name": "pro",
+  "private": true,
   "packageManager": "pnpm@11.9.0",
-  "dependencies": {
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint"
+  },
+  "devDependencies": {
     "turbo": "^2.10.1"
   }
 }

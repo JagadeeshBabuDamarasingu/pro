@@ -1,0 +1,17 @@
+# Phase 0 core-engine config. Distinct from pro.config.mjs (reserved for the
+# future JS-facing surfaces per .pro/specs/01-architecture.md); the Rust core
+# reads this file directly, no Node dependency.
+
+[provider]
+name = "ollama"
+base_url = "http://localhost:11434/v1"
+api_key_env = ""
+model = "functiongemma:latest"
+
+[profile]
+# One of: read-only, workspace, danger-full-access
+default = "read-only"
+
+[audit]
+log_path = ".pro/audit.jsonl"
+retention_days = 90
