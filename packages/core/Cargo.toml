@@ -10,6 +10,12 @@ members = [
     "crates/pro-supply-chain",
     "crates/pro-confidence",
     "crates/pro-slop",
+    "crates/pro-repomap",
+    "crates/pro-lsp",
+    "crates/pro-grounding",
+    "crates/pro-worktree",
+    "crates/pro-review",
+    "crates/pro-orchestrate",
     "crates/pro-core",
     "crates/pro-cli",
 ]
@@ -32,6 +38,14 @@ thiserror = "1"
 anyhow = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
 async-trait = "0.1"
+tree-sitter = "0.26"
+tree-sitter-rust = "0.24"
+tree-sitter-typescript = "0.23"
+tree-sitter-javascript = "0.25"
+petgraph = "0.8"
+lsp-types = "0.97"
+serde_yaml = "0.9"
+similar = "3.1"
 
 pro-config = { path = "crates/pro-config" }
 pro-capability = { path = "crates/pro-capability" }
@@ -42,4 +56,10 @@ pro-provenance = { path = "crates/pro-provenance" }
 pro-supply-chain = { path = "crates/pro-supply-chain" }
 pro-confidence = { path = "crates/pro-confidence" }
 pro-slop = { path = "crates/pro-slop" }
+pro-repomap = { path = "crates/pro-repomap" }
+pro-lsp = { path = "crates/pro-lsp" }
+pro-grounding = { path = "crates/pro-grounding" }
+pro-worktree = { path = "crates/pro-worktree" }
+pro-review = { path = "crates/pro-review" }
+pro-orchestrate = { path = "crates/pro-orchestrate" }
 pro-core = { path = "crates/pro-core" }

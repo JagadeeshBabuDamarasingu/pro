@@ -13,10 +13,17 @@ pro-provider.workspace = true
 pro-provenance.workspace = true
 pro-supply-chain.workspace = true
 pro-confidence.workspace = true
+pro-repomap.workspace = true
+pro-lsp.workspace = true
+pro-grounding.workspace = true
+pro-worktree.workspace = true
+pro-review.workspace = true
+pro-orchestrate.workspace = true
+lsp-types.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 reqwest.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
-
-[dev-dependencies]
 async-trait.workspace = true
+similar.workspace = true

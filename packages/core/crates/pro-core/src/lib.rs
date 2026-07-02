@@ -12,6 +12,12 @@ use pro_provider::{CompletionResponse, OpenAiCompatibleClient, Provider, Role, S
 use pro_sandbox::{EnforcementOutcome, EnforcerRegistry, RunSpec};
 use pro_supply_chain::{CratesIoRegistryClient, NpmRegistryClient, SupplyChainGate, Verdict};
 
+mod propose;
+mod workflow;
+
+pub use propose::{ProposedChange, ProposedFile};
+pub use workflow::WorkflowRunner;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ecosystem {
     Npm,
@@ -44,6 +50,8 @@ pub enum EngineError {
     SupplyChainRejected { package: String, ecosystem: &'static str, verdict: Verdict },
     #[error("no cascade provider configured ([cascade_provider] missing from config)")]
     NoCascadeProvider,
+    #[error("failed to parse structured provider output: {0}")]
+    Json(#[from] serde_json::Error),
 }
 
 /// Orders segments stability-first (system/tool manifest before
