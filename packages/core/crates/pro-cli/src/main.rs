@@ -126,6 +126,30 @@ enum Command {
         #[arg(long = "file")]
         files: Vec<PathBuf>,
     },
+    /// Debug/dev surface: directly construct a `RunSpec` and enforce() it
+    /// through a real OS-level sandbox backend, bypassing capability/
+    /// grant/tier checks entirely. NOT part of the capability-gated path
+    /// (that's `pro run`'s job once tier-promotion exists) — a raw
+    /// enforcer smoke-test, for live-verifying a sandbox backend directly.
+    SandboxSmoke {
+        /// Read-only paths to grant, in addition to the backend's
+        /// standard base environment (e.g. /usr, /bin).
+        #[arg(long = "ro")]
+        read_paths: Vec<PathBuf>,
+        /// Read-write paths to grant.
+        #[arg(long = "rw")]
+        write_paths: Vec<PathBuf>,
+        /// Named environment variables to pass through (values looked up
+        /// from this process's own environment at execution time).
+        #[arg(long = "env")]
+        env_vars: Vec<String>,
+        /// Command and arguments to run inside the sandbox, e.g.
+        /// `-- /bin/echo hello`. No `--net-host` flag exists here on
+        /// purpose: per-host network filtering isn't implemented by any
+        /// backend yet, so `net_hosts` is always empty for this command.
+        #[arg(last = true, required = true)]
+        argv: Vec<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -247,6 +271,9 @@ async fn main() -> ExitCode {
         }
         Command::Run { task, parallel, verify, files } => {
             cmd_run(config, project_root, &task, parallel, &verify, &files, json).await
+        }
+        Command::SandboxSmoke { read_paths, write_paths, env_vars, argv } => {
+            cmd_sandbox_smoke(read_paths, write_paths, env_vars, argv, json)
         }
     }
 }
@@ -668,4 +695,65 @@ fn exit_code_for(err: &EngineError) -> ExitCode {
         EngineError::Json(_) => EXIT_PROVIDER_ERROR,
     };
     ExitCode::from(code)
+}
+
+/// Bypasses `Engine`/`ToolAdapter::run` entirely — no capability check, no
+/// grant lookup, no audit log entry. Exists only because no tier-promotion
+/// workflow exists yet to let a real request reach a sandbox backend
+/// through the normal `pro run` path (every grant starts at, and stays
+/// at, tier 0/shadow — see `AGENTS.md`). This is a raw enforcer
+/// smoke-test, not a replacement for the capability-gated path.
+#[cfg(target_os = "linux")]
+fn cmd_sandbox_smoke(
+    read_paths: Vec<PathBuf>,
+    write_paths: Vec<PathBuf>,
+    env_vars: Vec<String>,
+    argv: Vec<String>,
+    json: bool,
+) -> ExitCode {
+    use pro_sandbox::{EnforcementOutcome, LinuxBwrapEnforcer, RunSpec, SandboxEnforcer};
+
+    let spec = RunSpec { argv, read_paths, write_paths, env_vars, net_hosts: vec![] };
+
+    let enforcer = match LinuxBwrapEnforcer::new() {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("sandbox-smoke: failed to construct backend: {err}");
+            return ExitCode::from(EXIT_SANDBOX_ERROR);
+        }
+    };
+
+    match enforcer.enforce(&spec) {
+        Ok(outcome) => {
+            if json {
+                println!("{}", serde_json::to_string_pretty(&outcome).unwrap_or_default());
+            } else if let EnforcementOutcome::Executed { stdout, stderr, exit_code, landlock } = &outcome {
+                use std::io::Write;
+                let _ = std::io::stdout().write_all(stdout);
+                let _ = std::io::stderr().write_all(stderr);
+                eprintln!("(exit_code={exit_code}, landlock={landlock:?})");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("sandbox-smoke: {err}");
+            ExitCode::from(EXIT_SANDBOX_ERROR)
+        }
+    }
+}
+
+/// No real sandbox backend exists for any platform but Linux yet
+/// (`AGENTS.md`) — kept as a hard, typed failure rather than a silent
+/// no-op so `pro-cli` still compiles and runs everywhere, without
+/// pretending this command does something it can't on this platform.
+#[cfg(not(target_os = "linux"))]
+fn cmd_sandbox_smoke(
+    _read_paths: Vec<PathBuf>,
+    _write_paths: Vec<PathBuf>,
+    _env_vars: Vec<String>,
+    _argv: Vec<String>,
+    _json: bool,
+) -> ExitCode {
+    eprintln!("sandbox-smoke: no real sandbox backend exists for this platform yet");
+    ExitCode::from(EXIT_SANDBOX_ERROR)
 }

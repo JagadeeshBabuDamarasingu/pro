@@ -4,6 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "pro-sandbox-helper"
+path = "src/bin/pro-sandbox-helper.rs"
+
 [dependencies]
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+landlock.workspace = true

@@ -22,10 +22,21 @@ pub enum EnforcementOutcome {
     /// outcome `ShadowEnforcer` can produce, and the correct behavior for
     /// tier-0 (shadow/observe-only) capabilities.
     Observed { would_have_run: RunSpec },
-    /// Reserved for a real OS-level backend: the process actually ran
-    /// inside enforced isolation. No implementation in this crate
-    /// constructs this variant yet.
-    Executed { stdout: Vec<u8>, stderr: Vec<u8>, exit_code: i32 },
+    /// The process actually ran inside enforced isolation.
+    Executed {
+        stdout: Vec<u8>,
+        stderr: Vec<u8>,
+        exit_code: i32,
+        /// Honest, typed record of whether the additional Landlock
+        /// path-restriction layer actually applied — never inferred or
+        /// assumed. See `linux::landlock_status::LandlockEnforcement`.
+        /// This field lives on the platform-agnostic `EnforcementOutcome`
+        /// rather than under the `linux` module so it stays nameable from
+        /// here; a future macOS/Windows backend may need to generalize it
+        /// (e.g. to a `Vec<DefenseInDepthLayer>`) — deferred, not solved
+        /// now, since no other backend exists yet.
+        landlock: LandlockEnforcement,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -35,6 +46,47 @@ pub enum SandboxError {
          '{argv0}' unsandboxed rather than silently degrading trust"
     )]
     NoBackend { argv0: String },
+
+    /// bwrap can only fully block (`--unshare-net`) or fully share the
+    /// host netns — no per-host allow-listing without a separate netns +
+    /// nftables/proxy layer, which is out of scope for this backend. A
+    /// non-empty `net_hosts` must never silently degrade to full network
+    /// access, so this is a hard error raised before anything is spawned.
+    #[error(
+        "per-host network filtering is not implemented by this backend; requested hosts \
+         {hosts:?} would require either full network access (silently over-granting) or full \
+         network block (silently under-granting) — refusing rather than guessing"
+    )]
+    PerHostNetworkFilteringUnsupported { hosts: Vec<String> },
+
+    /// `bwrap` wasn't found on `PATH` (or a configured override path) at
+    /// backend-construction time. Mirrors `pro_lsp::LspError::ServerNotFound`
+    /// — map `io::ErrorKind::NotFound` from a failed spawn, never
+    /// which-preflight-and-skip.
+    #[error("bubblewrap ('bwrap') binary not found: {0}")]
+    BackendBinaryNotFound(String),
+
+    /// Failed to spawn `bwrap` for a reason other than "not found" (e.g.
+    /// permission denied, resource exhaustion).
+    #[error("failed to spawn bubblewrap: {0}")]
+    Spawn(#[source] std::io::Error),
+
+    /// The `pro-sandbox-helper` binary wasn't found next to the current
+    /// executable at backend-construction time.
+    #[error("pro-sandbox-helper binary not found at expected path: {0}")]
+    HelperBinaryNotFound(std::path::PathBuf),
+
+    /// bwrap exited but the helper never wrote (or partially wrote) its
+    /// status file — e.g. it crashed before writing, or the exec into the
+    /// real target failed before that point. Distinguished from a normal
+    /// nonzero exit code from the *sandboxed target itself*, which is a
+    /// valid `EnforcementOutcome::Executed { exit_code, .. }`, not an error.
+    #[error("sandbox helper did not report a Landlock status: {0}")]
+    HelperStatusUnreadable(String),
+
+    /// Failed to create or prepare the status-file scratch path.
+    #[error("failed to prepare sandbox status file at {path}: {source}")]
+    StatusFileIo { path: std::path::PathBuf, #[source] source: std::io::Error },
 }
 
 /// The enforcement layer: every `run` capability must execute through an
@@ -99,6 +151,18 @@ impl Default for EnforcerRegistry {
         Self::new()
     }
 }
+
+mod landlock_status;
+pub use landlock_status::LandlockEnforcement;
+
+/// Linux-only real backend: bubblewrap for namespace/mount isolation,
+/// Landlock for defense-in-depth path restriction. Kept behind a `cfg` so
+/// macOS/Windows backends can be sibling modules later without touching
+/// this one.
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::enforcer::LinuxBwrapEnforcer;
 
 #[cfg(test)]
 mod tests {

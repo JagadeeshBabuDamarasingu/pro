@@ -243,7 +243,27 @@ impl ToolAdapter for Engine {
         }
 
         let enforcer = self.enforcers.enforcer_for_tier(tier_ordinal)?;
-        Ok(enforcer.enforce(&spec)?)
+        let outcome = enforcer.enforce(&spec)?;
+
+        // Per `02-security-core.md` §1 ("every grant/use is logged"): the
+        // check above only logs the allow/deny *decision* — this logs
+        // what actually happened once execution was attempted, including
+        // a real backend's exit code and Landlock enforcement status.
+        let decision_str = match &outcome {
+            EnforcementOutcome::Observed { .. } => "Observed",
+            EnforcementOutcome::Executed { .. } => "Executed",
+        };
+        let event = AuditEvent::new(
+            "engine",
+            "run",
+            "sandboxed execution",
+            decision_str,
+            format!("tier {tier_ordinal}: {:?}", spec.argv),
+            serde_json::to_value(&outcome).unwrap_or(serde_json::Value::Null),
+        );
+        let _ = self.audit.append(&event);
+
+        Ok(outcome)
     }
 
     fn env_get(&self, var: &str) -> Result<Option<String>, EngineError> {

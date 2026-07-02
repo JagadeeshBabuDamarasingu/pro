@@ -273,6 +273,95 @@ independent commands instead); it's real, tested, and ready to be exposed
 once there's a concrete reason to run the full chain as one command rather
 than its parts separately.
 
+## Status: Linux sandbox backend (bubblewrap + Landlock) — done
+
+Per `.pro/specs/09-roadmap.md` Phase 0 and `.pro/specs/02-security-core.md`
+§1. Fills what AGENTS.md previously called "the biggest Phase 0 gap":
+`pro-sandbox` had only `ShadowEnforcer` (records intent, never executes).
+Implemented, tested (25 new `pro-sandbox` unit tests + 5 in the new
+`pro-sandbox-helper` binary, workspace total 144 tests, all passing),
+clippy-clean, verified live in this exact WSL2 6.6 environment:
+
+- **`pro_sandbox::linux::enforcer::LinuxBwrapEnforcer`** (Linux-only,
+  `#[cfg(target_os = "linux")]`) — real `SandboxEnforcer` backend. Builds
+  an explicit `bwrap --unshare-all` argv (never a blanket `--ro-bind / /`):
+  a minimal host environment (`/usr`, `/bin`, `/lib`, `/lib64`,
+  `/etc/resolv.conf`, `/etc/ssl`, filtered to what actually exists on the
+  host), the caller's `RunSpec.read_paths`/`write_paths` identity-bound
+  read-only/read-write, and a small helper binary + scratch status file
+  bound at dedicated in-sandbox paths. `LinuxBwrapEnforcer::new()`
+  verifies both `bwrap` and the helper binary are actually present at
+  construction time (hard error, never deferred to first use — mirrors
+  `pro_lsp::LspError::ServerNotFound`'s "map the spawn error, don't
+  which-preflight" pattern).
+- **`pro_sandbox::landlock_status::LandlockEnforcement`** — honest,
+  four-state record (`FullyEnforced`/`PartiallyEnforced`/`NotEnforced`/
+  `HelperFailedBeforeAttempt`) of whether the additional Landlock
+  path-restriction layer actually applied, carried on every
+  `EnforcementOutcome::Executed`. Lives at the crate root (not under the
+  Linux-only module) since it's pure data on a platform-agnostic type —
+  the crate still compiles on non-Linux targets even though only the
+  Linux backend constructs this variant today.
+- **`pro-sandbox-helper`** (new `[[bin]]` in the `pro-sandbox` package,
+  itself `#[cfg(target_os = "linux")]`-gated internally so the package
+  still compiles elsewhere) — runs *inside* the bwrap sandbox, builds a
+  Landlock ruleset (via the `landlock` crate, ABI V3, `CompatLevel::
+  BestEffort`) scoped to exactly the granted paths plus the base host
+  binds and the status file itself (both needed post-`restrict_self()`),
+  records the real `RulesetStatus` to the status file, then
+  `std::os::unix::process::CommandExt::exec()`s into the real target —
+  process-image replacement is what makes the installed Landlock
+  restriction (inherited across `execve`) actually govern the sandboxed
+  command.
+- **Corrected assumption from planning**: a missing
+  `/sys/kernel/security/landlock` securityfs entry was initially taken as
+  proof this WSL2 kernel lacks Landlock support. That's wrong — Landlock
+  doesn't expose a securityfs entry at all (unlike some other LSMs). Live
+  testing proved the opposite: with zero Landlock rules granted, even
+  `/bin/echo` fails to exec with `EPERM`; granting the base host binds as
+  Landlock rules makes it succeed again — that behavior is only possible
+  if this kernel genuinely enforces Landlock (confirmed: ABI V3). This let
+  the `FullyEnforced` branch be live-verified directly in this
+  environment, not just the degraded `NotEnforced` path originally
+  expected.
+- **`pro_core::ToolAdapter::run`** now also audit-logs the execution
+  outcome (exit code, stdout/stderr, Landlock status) after a successful
+  `enforce()` — previously only the allow/deny decision was logged, not
+  what actually happened once execution was attempted.
+- **`pro-cli` addition**: `pro sandbox-smoke --ro PATH... --rw PATH...
+  --env NAME... -- <cmd> [args...]` — a raw enforcer smoke-test that
+  constructs a `RunSpec` directly and calls a `LinuxBwrapEnforcer`,
+  bypassing capability/grant/tier checks entirely (and the audit log).
+  Exists because no CLI command reaches `ToolAdapter::run` through the
+  normal path yet (see gaps below); documented as a debug surface only,
+  not "how you run sandboxed commands for real." New exit code: reuses
+  `EXIT_SANDBOX_ERROR` (4) directly, since this command bypasses `Engine`.
+
+**Verified live**: `pro sandbox-smoke --ro /tmp --rw /tmp -- /bin/echo hi`
+round-tripped through real bubblewrap with `landlock=FullyEnforced { abi: 3
+}`; reads/writes inside granted paths succeed and reads/writes outside
+them fail with real namespace-level absence (not just permission errors);
+network fully blocked when no hosts are requested (real `connect()`
+attempt via `python3` inside the sandbox); a nonexistent `bwrap`/helper
+path correctly hard-errors with a typed `SandboxError` rather than
+silently degrading.
+
+Not done in this pass, by explicit scope decision: **per-host network
+filtering** — `RunSpec.net_hosts` non-empty is a hard
+`SandboxError::PerHostNetworkFilteringUnsupported`, never silently
+full-open or full-blocked; bubblewrap alone can only fully block or fully
+share the host netns, and per-host egress filtering needs a separate
+netns+nftables/proxy layer. **Seccomp syscall filtering** — namespace/
+mount isolation (bwrap) + Landlock only this pass. **Tier-promotion
+workflow** — `Grant::new_shadow` still always sets tier 0/Shadow; there is
+still no API or CLI command anywhere in the workspace to promote a grant,
+so `EnforcerRegistry` can still never route to a real backend through the
+normal `Engine`/CLI path — this is why `pro sandbox-smoke` exists as a
+bypass rather than wiring `LinuxBwrapEnforcer` into `pro-cli`'s existing
+`EnforcerRegistry::new()` call sites (`cmd_ask`, `CodegenProposer::
+propose`), which remain untouched. **macOS (Seatbelt) / Windows
+(AppContainer) backends** — not started.
+
 ## Conventions worth knowing before touching this code
 
 - Everything capability-gated must go through `pro_core::Engine`'s
@@ -283,3 +372,8 @@ than its parts separately.
   not grow `pro-core` into a monolith.
 - `cargo clippy --workspace --all-targets -- -D warnings` must stay clean;
   fix lints rather than allow them unless there's a documented reason.
+- Don't use `/sys/kernel/security/landlock` (or any securityfs path) as a
+  signal for whether Landlock is supported — it doesn't expose one, unlike
+  some other LSMs. The only reliable check is attempting a real ruleset
+  and reading back its actual `RulesetStatus`/`LandlockStatus`, as
+  `pro-sandbox-helper::apply_landlock` does.
